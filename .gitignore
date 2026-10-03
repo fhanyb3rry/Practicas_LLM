@@ -1,0 +1,12 @@
+# aqui va la contraseña de mongo, NUNCA se sube
+.env
+*.env
+
+# basura de python
+__pycache__/
+*.pyc
+.venv/
+
+# editor
+.vscode/
+.idea/

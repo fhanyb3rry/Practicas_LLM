@@ -1,86 +1,77 @@
 # Prácticas de IA
 
-Dos proyectos hechos para la materia de Fundamentos de Inteligencia Artificial.
 
-| Carpeta | Qué es |
-|---|---|
-| `chef_virtual/` | **Práctica 2.** Tutor de cocina con un LLM local (Ollama), con interfaz gráfica y resumen del historial. |
-| `logismart/` | **Proyecto LogiSmart.** Centro de control de accesos para un patio logístico: reglas lógicas, MongoDB, clasificador híbrido (reglas + LLM), asistente con consulta a la base, matriz de riesgos éticos y reportes. |
+- **chef_virtual**: un tutor de cocina con ventana. Usa un modelo que corre en la compu (Ollama con llama3.2), guarda lo que le preguntas y te puede dar un resumen de la plática
+- **logismart**: un sistema para controlar la entrada de camiones a un patio logístico. Decide con reglas lógicas si un camión pasa, va a inspección o se bloquea; guarda todo en MongoDB; clasifica correos de incidentes con reglas y con el LLM; tiene un asistente que contesta con lo que hay en la base; una matriz de riesgos éticos con gráfica; y reportes en PDF, CSV y JSON.
 
-## Requisitos
+## Para correrlo
 
-- Python 3.10 o más nuevo
-- [Ollama](https://ollama.com/download) instalado y abierto, con el modelo `llama3.2`:
+Necesita Python, Ollama abierto y el modelo descargado:
 
-```bash
-ollama pull llama3.2
 ```
-
-- Las librerías:
-
-```bash
+ollama pull llama3.2
 pip install -r requirements.txt
 ```
 
-## Configuración de MongoDB
+Para la base de datos copia `.env.example` como `.env` y pon tus datos de MongoDB. El `.env` no se sube a git.
 
-Copia `.env.example` como `.env` (en la raíz) y llena tus datos. El `.env` está en `.gitignore`, no se sube.
+Ya con eso:
 
 ```
-MONGO_USER=...
-MONGO_PASSWORD=...
-MONGO_CLUSTER=...
-MONGO_DB=...
+python chef_virtual/chef_virtual.py
+python logismart/app.py
 ```
 
-## Cómo se usa
+La primera respuesta del LLM tarda como un minuto porque tiene que cargar el modelo. Después va más rápido.
 
-```bash
-python chef_virtual/chef_virtual.py     # el tutor de cocina
-python logismart/app.py                 # el sistema LogiSmart
+## Datos de ejemplo
+
+Para no ver todo vacío hay un script que carga camiones, accesos, incidentes y riesgos de prueba. Te pregunta antes de escribir y todo lo que mete queda marcado como demo.
+
 ```
-
-Datos de demostración (pide confirmación antes de escribir y se pueden borrar):
-
-```bash
 python logismart/datos_demo.py
 python logismart/datos_demo.py --borrar
 ```
 
-Evaluación del clasificador con los 30 correos etiquetados (con `--llm` compara también el LLM y el híbrido, tarda varios minutos):
+El segundo comando borra solo los datos de ejemplo, lo demás no se toca.
 
-```bash
-python logismart/evaluacion.py
-python logismart/evaluacion.py --llm
+## Las reglas
+
+Cada camión se evalúa con estas premisas: P tiene autorización, Q pasa el peso, R lleva materiales peligrosos, S el conductor tiene la certificación vigente, H la hora está dentro del horario (10:00 a 16:00) y W la certificación está por vencer (30 días o menos).
+
+- A = P ∧ S ∧ ¬Q es el acceso estándar
+- E = P ∧ (R ∨ Q) es la inspección especial
+- B = R ∧ ¬H bloquea los peligrosos fuera de horario (regla nueva)
+- L = S ∧ W avisa que hay que renovar la certificación (regla nueva)
+
+El acceso final es A ∧ ¬B.
+
+## El experimento del clasificador
+
+Hay 30 correos etiquetados en `logismart/correos_etiquetados.py`. Para comparar reglas, LLM y la mezcla de los dos:
+
+```
+python logismart/evaluacion.py          # solo reglas, es rápido
+python logismart/evaluacion.py --llm    # los tres, tarda varios minutos
 ```
 
 ## Pruebas
 
-```bash
+```
 python -m unittest discover -s logismart -p "test_*.py"
 ```
 
-Las pruebas no usan el cluster ni Ollama: trabajan con una base en memoria (`base_en_memoria.py`) y un LLM simulado.
+No usan internet ni Ollama: trabajan con una base falsa en memoria y un LLM de mentiras, así que no tocan el cluster.
 
-## Cómo está organizado LogiSmart
+## Qué hay en logismart
 
-| Capa | Archivos |
-|---|---|
-| Reglas lógicas | `reglas.py` |
-| Datos (MongoDB) | `base_datos.py`, `datos_demo.py` |
-| IA | `clasificador.py`, `asistente.py`, `correos_etiquetados.py`, `evaluacion.py` |
-| Servicios | `riesgos.py`, `reportes.py`, `correo.py`, `configuracion.py` |
-| Interfaz | `app.py`, `vista_*.py`, `graficas.py` |
-| Pruebas | `test_*.py`, `base_en_memoria.py` |
-
-Pestañas de la aplicación: Panel, Acceso, Simulador, Camiones (con bitácora), Incidentes, Asistente, Riesgos, Reportes y Config.
-
-### Reglas
-
-- `A = P ∧ S ∧ ¬Q` acceso estándar
-- `E = P ∧ (R ∨ Q)` inspección especial
-- `B = R ∧ ¬H` bloqueo por horario (materiales peligrosos fuera de 10:00 a 16:00)
-- `L = S ∧ W` alerta de renovación (certificación vigente pero por vencer)
-- Acceso final: `A ∧ ¬B`
-
-Donde `P` autorización previa, `Q` peso excedido, `R` materiales peligrosos, `S` certificación vigente, `H` dentro del horario y `W` certificación por vencer.
+- `app.py` y los `vista_*.py` son la ventana, uno por pestaña
+- `reglas.py` las reglas lógicas y sus tablas de verdad
+- `base_datos.py` todo lo de MongoDB
+- `clasificador.py` clasifica los correos
+- `asistente.py` el chat que consulta la base
+- `riesgos.py` y `graficas.py` la matriz de riesgos
+- `reportes.py` los PDF, CSV y JSON
+- `configuracion.py` y `correo.py` lo de la pestaña Config y el aviso a soporte (en simulación no manda nada)
+- `datos_demo.py` y `evaluacion.py` los scripts de arriba
+- los `test_*.py` son las pruebas

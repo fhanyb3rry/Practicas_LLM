@@ -21,13 +21,19 @@ def validar(premisas):
             raise TypeError("La premisa " + nombre + " debe ser True o False")
 
 
-def hora_permitida(hora, inicio=HORA_INICIO, fin=HORA_FIN):
+def hora_permitida(hora, inicio=None, fin=None):
+    if inicio is None:
+        inicio = HORA_INICIO
+    if fin is None:
+        fin = HORA_FIN
     return inicio <= hora <= fin
 
 
-def estado_certificacion(vence, hoy=None, dias_aviso=DIAS_POR_VENCER):
+def estado_certificacion(vence, hoy=None, dias_aviso=None):
     if hoy is None:
         hoy = date.today()
+    if dias_aviso is None:
+        dias_aviso = DIAS_POR_VENCER
 
     dias = (vence - hoy).days
     vigente = dias >= 0

@@ -145,10 +145,14 @@ def extraer_datos(asunto, cuerpo):
     return {"placa": placa, "camion_id": camion_id, "peso_kg": peso_kg, "ubicacion": ubicacion}
 
 
-def clasificar_llm(asunto, cuerpo, chat=None, modelo=MODELO, intentos=MAX_INTENTOS):
+def clasificar_llm(asunto, cuerpo, chat=None, modelo=None, intentos=None):
     
     if chat is None:
         chat = ollama.chat
+    if modelo is None:
+        modelo = MODELO
+    if intentos is None:
+        intentos = MAX_INTENTOS
 
     correo = "Asunto: " + asunto + "\n\n" + cuerpo
     mensajes = [
@@ -217,23 +221,35 @@ def completar_entidades(entidades, entidades_llm, texto):
     return entidades
 
 
-def clasificar_hibrido(asunto, cuerpo, chat=None, modelo=MODELO):
+def clasificar_solo_reglas(asunto, cuerpo):
     reglas = clasificar_reglas(asunto, cuerpo)
-    entidades = extraer_datos(asunto, cuerpo)
-    llm = clasificar_llm(asunto, cuerpo, chat, modelo)
 
     resultado = {
         "categoria": reglas["categoria"],
         "prioridad": reglas["prioridad"],
-        "entidades": entidades,
+        "entidades": extraer_datos(asunto, cuerpo),
         "resumen": asunto.strip()[:120],
         "metodo": "reglas",
         "requiere_revision_humana": False,
         "coincidio_con_reglas": None,
         "palabras_clave": reglas["palabras_clave"],
         "reglas": reglas,
-        "llm": llm,
+        "llm": None,
     }
+
+    if resultado["categoria"] == "otro":
+        resultado["requiere_revision_humana"] = True
+
+    return resultado
+
+
+def clasificar_hibrido(asunto, cuerpo, chat=None, modelo=None):
+    resultado = clasificar_solo_reglas(asunto, cuerpo)
+    reglas = resultado["reglas"]
+    entidades = resultado["entidades"]
+
+    llm = clasificar_llm(asunto, cuerpo, chat, modelo)
+    resultado["llm"] = llm
 
     if llm["ok"]:
         datos = llm["datos"]

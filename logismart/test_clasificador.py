@@ -55,6 +55,16 @@ class TestReglas(unittest.TestCase):
         self.assertEqual(d["peso_kg"], 48500.0)
         self.assertEqual(d["ubicacion"], "anden 3")
 
+    def test_solo_reglas_no_llama_al_llm(self):
+        r = clasificador.clasificar_solo_reglas("URGENTE: derrame", "fuga de químico")
+        self.assertEqual(r["metodo"], "reglas")
+        self.assertIsNone(r["llm"])
+        self.assertEqual((r["categoria"], r["prioridad"]), ("materiales_peligrosos", "critica"))
+
+    def test_solo_reglas_marca_otro_para_revision(self):
+        r = clasificador.clasificar_solo_reglas("Hola", "una duda")
+        self.assertTrue(r["requiere_revision_humana"])
+
     def test_dato_que_no_esta_queda_en_none(self):
         d = clasificador.extraer_datos("Hola", "una duda")
         self.assertEqual(d, {"placa": None, "camion_id": None, "peso_kg": None, "ubicacion": None})

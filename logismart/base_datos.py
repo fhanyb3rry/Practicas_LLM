@@ -58,6 +58,32 @@ def validar_escala(probabilidad, impacto):
         raise ErrorBD("El impacto debe ser un número entero del 1 al 5.")
 
 
+def agregar_extra(documento, extra):
+    if extra is not None:
+        for campo in extra:
+            documento[campo] = extra[campo]
+
+
+def datos_camion(placa, camion_id, empresa, autorizado, conductor, cert_vence):
+    placa = (placa or "").strip().upper()
+    camion_id = (camion_id or "").strip().upper()
+    empresa = (empresa or "").strip()
+
+    if placa == "" or camion_id == "":
+        raise ErrorBD("La placa y el ID del camión son obligatorios.")
+    if empresa == "":
+        raise ErrorBD("Falta la empresa.")
+
+    return {
+        "placa": placa,
+        "camion_id": camion_id,
+        "empresa": empresa,
+        "autorizacion": bool(autorizado),
+        "conductor": (conductor or "").strip(),
+        "cert_vence": a_datetime(cert_vence),
+    }
+
+
 def hacer_evento(estado, nota, usuario):
     return {"estado": estado, "nota": nota, "usuario": usuario, "fecha": ahora()}
 
@@ -65,9 +91,10 @@ def hacer_evento(estado, nota, usuario):
 def filtro_fechas(desde, hasta):
     rango = {}
     if desde:
-        rango["$gte"] = a_datetime(desde)
+        # las fechas del filtro son de la compu, mongo guarda en utc
+        rango["$gte"] = a_datetime(desde).astimezone(timezone.utc)
     if hasta:
-        rango["$lt"] = a_datetime(hasta)
+        rango["$lt"] = a_datetime(hasta).astimezone(timezone.utc)
     return rango
 
 
@@ -166,6 +193,8 @@ class BaseDatos:
             cambios["actualizado"] = ahora()
             resultado = self._col(coleccion).update_one({"_id": a_object_id(id_)}, {"$set": cambios})
             return resultado.matched_count > 0
+        except DuplicateKeyError:
+            raise ErrorBD("Ya existe un registro con esa placa o ID de camión.")
         except PyMongoError:
             raise ErrorBD(MENSAJE_FALLO)
 
@@ -184,25 +213,14 @@ class BaseDatos:
         except PyMongoError:
             raise ErrorBD(MENSAJE_FALLO)
 
-    def crear_camion(self, placa, camion_id, empresa, autorizado, conductor, cert_vence):
-        placa = (placa or "").strip().upper()
-        camion_id = (camion_id or "").strip().upper()
-        empresa = (empresa or "").strip()
-
-        if placa == "" or camion_id == "":
-            raise ErrorBD("La placa y el ID del camión son obligatorios.")
-        if empresa == "":
-            raise ErrorBD("Falta la empresa.")
-
-        camion = {
-            "placa": placa,
-            "camion_id": camion_id,
-            "empresa": empresa,
-            "autorizacion": bool(autorizado),
-            "conductor": (conductor or "").strip(),
-            "cert_vence": a_datetime(cert_vence),
-        }
+    def crear_camion(self, placa, camion_id, empresa, autorizado, conductor, cert_vence, extra=None):
+        camion = datos_camion(placa, camion_id, empresa, autorizado, conductor, cert_vence)
+        agregar_extra(camion, extra)
         return self.crear("camiones", camion)
+
+    def editar_camion(self, id_, placa, camion_id, empresa, autorizado, conductor, cert_vence):
+        camion = datos_camion(placa, camion_id, empresa, autorizado, conductor, cert_vence)
+        return self.actualizar("camiones", id_, camion)
 
     def buscar_camion(self, texto):
         try:
@@ -213,7 +231,7 @@ class BaseDatos:
         except PyMongoError:
             raise ErrorBD(MENSAJE_FALLO)
 
-    def registrar_acceso(self, camion, premisas, decision, operador="operador"):
+    def registrar_acceso(self, camion, premisas, decision, operador="operador", extra=None):
         acceso = {
             "camion_id": None,
             "placa": None,
@@ -232,9 +250,10 @@ class BaseDatos:
             acceso["camion_id"] = camion.get("camion_id")
             acceso["placa"] = camion.get("placa")
 
+        agregar_extra(acceso, extra)
         return self.crear("accesos", acceso)
 
-    def crear_incidente(self, correo, clasificacion, datos_extraidos, usuario="operador"):
+    def crear_incidente(self, correo, clasificacion, datos_extraidos, usuario="operador", extra=None):
         incidente = {
             "correo_original": dict(correo),
             "clasificacion": dict(clasificacion),
@@ -242,6 +261,7 @@ class BaseDatos:
             "estado": "nuevo",
             "historial": [hacer_evento("nuevo", "Incidente creado", usuario)],
         }
+        agregar_extra(incidente, extra)
         return self.crear("incidentes", incidente)
 
     def cambiar_estado_incidente(self, id_, estado, nota="", usuario="operador"):
@@ -260,6 +280,16 @@ class BaseDatos:
         except PyMongoError:
             raise ErrorBD(MENSAJE_FALLO)
 
+    def agregar_evento_incidente(self, id_, nota, usuario="operador"):
+        try:
+            resultado = self._col("incidentes").update_one(
+                {"_id": a_object_id(id_)},
+                {"$push": {"historial": hacer_evento(None, nota, usuario)}},
+            )
+            return resultado.matched_count > 0
+        except PyMongoError:
+            raise ErrorBD(MENSAJE_FALLO)
+
     def editar_clasificacion(self, id_, clasificacion, usuario="operador"):
         try:
             resultado = self._col("incidentes").update_one(
@@ -272,7 +302,7 @@ class BaseDatos:
             raise ErrorBD(MENSAJE_FALLO)
 
     def crear_riesgo(self, modulo, descripcion, categoria, probabilidad, impacto,
-                     mitigacion="", prob_residual=None, impacto_residual=None):
+                     mitigacion="", prob_residual=None, impacto_residual=None, extra=None):
         if prob_residual is None:
             prob_residual = probabilidad
         if impacto_residual is None:
@@ -294,6 +324,7 @@ class BaseDatos:
             "puntaje_residual": puntaje(prob_residual, impacto_residual),
             "historico": [],
         }
+        agregar_extra(riesgo, extra)
         return self.crear("riesgos_eticos", riesgo)
 
     def editar_riesgo(self, id_, cambios):

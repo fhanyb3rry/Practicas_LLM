@@ -173,9 +173,11 @@ def numeros_citados(respuesta, fuentes):
     return citados
 
 
-def responder(db, pregunta, historial, chat=None, modelo=MODELO):
+def responder(db, pregunta, historial, chat=None, modelo=None):
     if chat is None:
         chat = ollama.chat
+    if modelo is None:
+        modelo = MODELO
 
     resultado = {"respuesta": "", "fuentes": [], "uso_llm": False, "error": "",
                  "prompt": "", "modelo": modelo, "latencia_ms": 0.0}
